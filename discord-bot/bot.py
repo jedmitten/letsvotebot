@@ -1,8 +1,8 @@
 import discord
 from discord.ext import commands
-from collections import Counter
 from dotenv import load_dotenv
 import os
+from pyrankvote import RankVote
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
@@ -13,28 +13,44 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.command()
 async def rcv(ctx, *args):
+    """Usage: !rcv A,B,C | user1:1,2,3 user2:2,1,3"""
     try:
         options_part, *votes_parts = " ".join(args).split("|")
         options = [opt.strip() for opt in options_part.split(",")]
         ballots = []
+
+        # Parse the votes into a list of lists of rankings
         for vote in votes_parts:
             for v in vote.strip().split():
                 rankings = list(map(int, v.split(":")[1].split(",")))
                 ballots.append(rankings)
 
-        def instant_runoff(options, ballots):
-            while True:
-                counts = Counter(ballot[0] for ballot in ballots)
-                if not counts: return "No winner"
-                top = counts.most_common(1)[0]
-                if top[1] > len(ballots) / 2:
-                    return options[top[0] - 1]
-                least = min(counts.values())
-                elim = [k for k, v in counts.items() if v == least]
-                ballots = [[x for x in ballot if x not in elim] for ballot in ballots]
+        # Use PyRankVote for instant-runoff voting
+        election = RankVote(options, ballots)
+        winner = election.get_winner()
 
-        result = instant_runoff(options, ballots)
-        await ctx.send(f"Winner: {result}")
+        await ctx.send(f"RCV Winner: **{winner}**")
+    except Exception as e:
+        await ctx.send(f"Error: {e}")
+
+@bot.command()
+async def poll(ctx, *, arg):
+    """Usage: !poll What's your favorite color? | Red, Blue, Green"""
+    try:
+        question, options_str = map(str.strip, arg.split("|"))
+        options = [opt.strip() for opt in options_str.split(",")]
+        emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+
+        if len(options) > len(emojis):
+            await ctx.send("Too many options (max 10).")
+            return
+
+        description = "\n".join(f"{emojis[i]} {opt}" for i, opt in enumerate(options))
+        embed = discord.Embed(title=question, description=description, color=0x00ff00)
+        msg = await ctx.send(embed=embed)
+
+        for i in range(len(options)):
+            await msg.add_reaction(emojis[i])
     except Exception as e:
         await ctx.send(f"Error: {e}")
 
